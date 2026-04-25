@@ -15,7 +15,7 @@ bot = telebot.TeleBot(TOKEN)
 
 # Your chat ID - Replace this with your actual Telegram chat ID
 # How to get it: Send /start to the bot, then check logs or use @userinfobot
-YOUR_CHAT_ID = 123456789   # ← CHANGE THIS TO YOUR CHAT ID
+YOUR_CHAT_ID = 7219470795   # ← CHANGE THIS TO YOUR CHAT ID
 
 def get_liq_message():
     now = datetime.now().strftime("%d %B %Y, %H:%M IST")
