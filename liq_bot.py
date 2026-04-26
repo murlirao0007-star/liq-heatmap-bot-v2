@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running 24/7!"
+    return "Bot is running 24/7 with real-time public data!"
 
 def run():
     app.run(host="0.0.0.0", port=8080)
@@ -21,73 +21,63 @@ def keep_alive():
     t.start()
 
 TOKEN = os.getenv("TOKEN")
-COINGLASS_KEY = os.getenv("COINGLASS_KEY")
 CHAT_ID = os.getenv("CHAT_ID")
 
 bot = telebot.TeleBot(TOKEN)
 
-def get_heatmap_coins():
+def get_public_liquidation_data():
     try:
-        url = "https://open-api-v4.coinglass.com/api/futures/liquidation/coin-list"
-        headers = {"cg-api-key": COINGLASS_KEY} if COINGLASS_KEY else {}
-        response = requests.get(url, headers=headers, timeout=15)
-        data = response.json().get('data', [])
-
-        if not data:
-            return "❌ No data from Coinglass right now."
-
-        for coin in data:
-            coin['total_liq_1h'] = (coin.get('long_liquidation_usd_1h') or 0) + (coin.get('short_liquidation_usd_1h') or 0)
-
-        data = sorted(data, key=lambda x: x.get('total_liq_1h', 0), reverse=True)[:12]
-
+        # Get real-time prices from CoinGecko
         price_url = "https://api.coingecko.com/api/v3/coins/markets"
-        price_params = {"vs_currency": "usd", "order": "volume_desc", "per_page": 100, "page": 1}
+        price_params = {"vs_currency": "usd", "order": "volume_desc", "per_page": 50, "page": 1}
         price_data = requests.get(price_url, params=price_params, timeout=12).json()
         price_map = {coin['symbol'].upper(): coin['current_price'] for coin in price_data}
 
+        # Get real-time futures data from Binance (public)
+        binance_url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
+        binance_data = requests.get(binance_url, timeout=10).json()
+
+        # Filter top coins by volume (proxy for high liquidity/liquidation potential)
+        top_coins = sorted(binance_data, key=lambda x: float(x['quoteVolume']), reverse=True)[:15]
+
         now = datetime.now().strftime("%d %B %Y, %H:%M IST")
-        msg = f"🔥 **15-Min Coinglass Heatmap Alert** - {now}\n\n"
+        msg = f"🔥 **15-Min Real-Time Liquidation Alert** - {now}\n\n"
 
-        for i, coin in enumerate(data, 1):
-            symbol = coin.get('symbol', 'N/A')
+        for i, coin in enumerate(top_coins, 1):
+            symbol = coin['symbol'].replace('USDT', '')
             price = price_map.get(symbol, 0)
-            long_liq = coin.get('long_liquidation_usd_1h') or coin.get('long_liquidation_usd_24h', 0)
-            short_liq = coin.get('short_liquidation_usd_1h') or coin.get('short_liquidation_usd_24h', 0)
-            total_liq = long_liq + short_liq
+            volume = float(coin['quoteVolume'])
+            price_change = float(coin['priceChangePercent'])
 
-            if short_liq > long_liq * 1.8:
-                sl_pct = 1.5
-                tp_pct = 12
-                bias = "🔥 **MAX PROFIT LONG** (Very Strong)"
-            elif long_liq > short_liq * 1.8:
-                sl_pct = 1.5
-                tp_pct = 12
-                bias = "🔻 **MAX PROFIT SHORT** (Very Strong)"
+            # Estimate liquidation potential based on volume + price movement
+            if abs(price_change) > 5:
+                bias = "🔥 **HIGH LIQUIDATION RISK**"
+                tp_pct = 10
+            elif abs(price_change) > 2:
+                bias = "⚡ **MEDIUM LIQUIDATION RISK**"
+                tp_pct = 8
             else:
-                sl_pct = 1.5
-                tp_pct = 12
-                bias = "⚖️ MAX PROFIT"
+                bias = "📊 **NORMAL**"
+                tp_pct = 6
 
             entry = price
-            sl = round(price * (1 - sl_pct/100), 4) if price else 0
+            sl = round(price * 0.985, 4) if price else 0
             tp = round(price * (1 + tp_pct/100), 4) if price else 0
 
-            msg += f"{i}. **{symbol}** (~${price:,.4f}) | {bias}\n"
-            msg += f"   1h Liq: ${total_liq:,.0f}\n"
-            msg += f"   Entry: ~${entry:,.4f} | SL: ~${sl:,.4f} ({sl_pct}% risk)\n"
-            msg += f"   TP: ~${tp:,.4f} → **MAX PROFIT: +{tp_pct}%**\n\n"
+            msg += f"{i}. **{symbol}** (~${price:,.4f})\n"
+            msg += f"   24h Volume: ${volume:,.0f} | {bias}\n"
+            msg += f"   Entry: ~${entry:,.4f} | SL: ~${sl:,.4f} | TP: ~${tp:,.4f} (+{tp_pct}%)\n\n"
 
-        msg += "Live: https://www.coinglass.com/pro/futures/LiquidationHeatMap"
+        msg += "Data: CoinGecko + Binance Public API"
         return msg
 
     except Exception as e:
         return f"❌ Error: {e}"
 
 def send_alert():
-    text = get_heatmap_coins()
+    text = get_public_liquidation_data()
     bot.send_message(chat_id=CHAT_ID, text=text, parse_mode='Markdown')
-    print("✅ Alert sent!")
+    print("✅ Real-time alert sent!")
 
 schedule.every(15).minutes.do(send_alert)
 
@@ -99,5 +89,5 @@ def run_schedule():
 Thread(target=run_schedule, daemon=True).start()
 keep_alive()
 
-print("✅ FINAL Bot running 24/7 with exact format!")
+print("✅ BEST PUBLIC VERSION running 24/7!")
 bot.infinity_polling()
