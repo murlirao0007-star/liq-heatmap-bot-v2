@@ -16,4 +16,5 @@ def start(message):
     bot.reply_to(message, "✅ Bot is working! TOKEN is correct.")
 
 print("✅ Bot running successfully")
+bot.remove_webhook()
 bot.infinity_polling()
